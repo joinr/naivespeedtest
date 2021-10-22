@@ -96,24 +96,24 @@
   (->> times
        (faster-partition-step 8 1)
        (map    (fn [v] [v (-  (peek v) (v 0))]))
-       (filter (fn [v] (> (v 1) 1000)))))
+       (filter (fn [v] (>  1000 (v 1))))))
 
-;;Execution time mean : 570.269916 ms
+;;Execution time mean : 508.943866 ms
 
 (defn smt-8-5 [times]
   (->> times
        (faster-partition-step 8 1)
        (map    (fn [v] [v (-  (qlast v)
                               (qfirst v))]))
-       (filter (fn [v] (> (v 1) 1000)))))
-;;Execution time mean : 545.621116 ms
+       (filter (fn [v] (>  1000 (v 1))))))
+;;Execution time mean : 497.392516 ms
 
 (defn smt-8-6 [times]
   (->> times
        (faster-partition-step 8 1)
        (map    (fn [v] [v (-  (long (qlast v))
                               (long (qfirst v)))]))
-       (filter (fn [v] (> (long (v 1)) 1000)))))
+       (filter (fn [v] (>  1000 (long (v 1)))))))
 ;;Execution time mean : 525.358682 ms
 
 (defn smt-8-6 [times]
@@ -121,7 +121,8 @@
        (faster-partition-step 8 1)
        (map    (fn [v] [v (-  (long (qlast v))
                               (long (qfirst v)))]))
-       (filter (fn [v] (> (long (v 1)) 1000)))))
+       (filter (fn [v] (>  1000 (long (v 1)))))))
+;;Execution time mean : 499.423699 ms
 
 (i.s/reg-xf! x/reduce)
 (i.s/reg-xf! x/count)
@@ -133,8 +134,8 @@
        (x/partition  8 1)
        (map    (fn [v] [v (-  (long (qlast v))
                               (long (qfirst v)))]))
-       (filter (fn [v] (> (long (v 1)) 1000)))))
-;;"Elapsed time: 862.0588 msecs" ;;Unexpected!
+       (filter (fn [v] (>  1000 (long (v 1)))))))
+;;Execution time mean : 791.383949 ms ;;Unexpected!
 
 (defn ^java.util.ArrayDeque mpop!  [^java.util.ArrayDeque q n]
   (dotimes [i n]
@@ -182,9 +183,9 @@
        (mut-partition-step  8 1)
        (map    (fn [v] [v (-  ^long (peek v)
                               ^long (v 0))]))
-       (filter (fn [v] (> ^long (v 1) 1000)))))
+       (filter (fn [v] (> 1000  ^long (v 1))))))
 
-;;Execution time mean : 442.740149 ms
+;;Execution time mean : 397.179632 ms
 
 (defn smt-8-9 [times]
   (->> times
@@ -192,8 +193,142 @@
        (keep    (fn [v]
                   (let [n (-  ^long (peek v)
                               ^long (v 0))]
-                    (when (> n 1000)
+                    (when (>  1000 n)
                       [v n]))))))
 
-;;Execution time mean : 350.026532 ms
+;;Execution time mean : 303.931532 ms
 
+
+;;from https://bsless.github.io/fast-and-elegant-clojure/
+
+(defn sliding
+  ([^long n]
+   (sliding n 1))
+  ([^long n ^long step]
+   (fn [rf]
+     (let [a (java.util.ArrayDeque. n)] ;; Queue here
+       (fn
+         ([] (rf))
+         ([result] (rf result)) ;; don't need leftovers
+         ([result input]
+          (.add a input)
+          (if (= n (.size a))
+            (let [v (vec (.toArray a))]
+              ;; Remove `step` elements instead of clear
+              (dotimes [_ step] (.removeFirst a))
+              (rf result v))
+            result)))))))
+
+(def baseline-xf
+  (comp
+   (sliding 8 1)
+   (map (juxt identity
+              (comp (partial apply -)
+                    (juxt last first))))
+   (filter (comp (partial > 1000) second))))
+
+(defn smt-8-10 [times]
+  (sequence baseline-xf times))
+
+;;Execution time mean : 782.675432 ms
+
+(def decomposed-xf
+  (comp
+   (sliding 8 1)
+   (map (fn [v] [v (- (last v) (first v))]))
+   (filter (fn [[_ t]] (> 1000 t)))))
+
+(defn smt-8-11 [times]
+  (sequence decomposed-xf times))
+
+;;Execution time mean : 688.363749 ms
+
+(def vector-xf
+  (comp
+   (sliding 8 1)
+   (map (fn [v] [v (- (peek v) (nth v 0))]))
+   (filter (fn [[_ t]] (> 1000 t)))))
+
+(defn smt-8-12 [times]
+  (sequence vector-xf times))
+
+;;Execution time mean : 293.541132 ms
+(def keep-xf
+  (comp
+   (sliding 8 1)
+   (keep (fn [v]
+           (when (> 1000 (- (peek v) (nth v 0)))
+             v)))))
+
+(defn smt-8-13 [times]
+  (sequence keep-xf times))
+
+;;Execution time mean : 239.912566 ms
+
+
+(set! *unchecked-math* true)
+(def unchecked-xf
+  (comp
+   (sliding 8 1)
+   (keep (fn [v]
+           (when (> 1000 (unchecked-subtract (long (peek v)) (long (nth v 0))))
+             v)))))
+(set! *unchecked-math* false)
+
+(defn smt-8-14 [times]
+  (sequence unchecked-xf times))
+
+;;Execution time mean : 226.269099 ms
+
+
+(defn sliding-array
+  ([^long n ^long step]
+   (fn [rf]
+     (let [a (java.util.ArrayDeque. n)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (.add a input)
+          (if (= n (.size a))
+            (let [v (.toArray a)]
+              ;; Remove `step` elements instead of clear
+              (dotimes [_ step] (.removeFirst a))
+              (rf result v))
+            result)))))))
+
+(set! *unchecked-math* true)
+(def array-xf
+  (comp
+   (sliding-array 8 1)
+   (keep (fn [^objects arr]
+           (when (> 1000 (unchecked-subtract
+                          (long (aget arr 7))
+                          (long (aget arr 0))))
+             arr)))))
+(set! *unchecked-math* false)
+
+(defn smt-8-15 [times]
+  (sequence array-xf times))
+
+;;Execution time mean : 42.582204 ms
+
+(set! *unchecked-math* true)
+(defn unrolled
+  [^longs arr]
+  (let [l (unchecked-subtract (alength arr) 7)]
+    (loop [idx (int 0) agg ()]
+      (if (< idx l)
+        (let [idx (int idx)]
+          (recur
+           (unchecked-inc-int idx)
+           (if (> 1000 (unchecked-subtract (aget arr (unchecked-add-int idx 7)) (aget arr idx)))
+             (.cons agg idx)
+             agg)))
+        agg))))
+(set! *unchecked-math* false)
+
+(defn smt-8-16 [times]
+  (let [arr (long-array times-v)]
+    (unrolled arr)))
+;;Execution time mean : 12.766361 ms
