@@ -116,6 +116,12 @@
        (filter (fn [v] (> (long (v 1)) 1000)))))
 ;;Execution time mean : 525.358682 ms
 
+(defn smt-8-6 [times]
+  (->> times
+       (faster-partition-step 8 1)
+       (map    (fn [v] [v (-  (long (qlast v))
+                              (long (qfirst v)))]))
+       (filter (fn [v] (> (long (v 1)) 1000)))))
 
 (i.s/reg-xf! x/reduce)
 (i.s/reg-xf! x/count)
@@ -174,6 +180,20 @@
 (defn smt-8-8 [times]
   (->> times
        (mut-partition-step  8 1)
-       (map    (fn [v] [v (-  (long (qlast v))
-                              (long (qfirst v)))]))
-       (filter (fn [v] (> (long (v 1)) 1000)))))
+       (map    (fn [v] [v (-  ^long (peek v)
+                              ^long (v 0))]))
+       (filter (fn [v] (> ^long (v 1) 1000)))))
+
+;;Execution time mean : 442.740149 ms
+
+(defn smt-8-9 [times]
+  (->> times
+       (mut-partition-step  8 1)
+       (keep    (fn [v]
+                  (let [n (-  ^long (peek v)
+                              ^long (v 0))]
+                    (when (> n 1000)
+                      [v n]))))))
+
+;;Execution time mean : 350.026532 ms
+
