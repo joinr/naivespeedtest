@@ -129,3 +129,51 @@
                               (long (qfirst v)))]))
        (filter (fn [v] (> (long (v 1)) 1000)))))
 ;;"Elapsed time: 862.0588 msecs" ;;Unexpected!
+
+(defn ^java.util.ArrayDeque mpop!  [^java.util.ArrayDeque q n]
+  (dotimes [i n]
+    (.removeFirst q))
+  q)
+
+(defn ^java.util.ArrayDeque mpush! [^java.util.ArrayDeque q xs]
+  (doseq [x xs]
+    (.add q x))
+  q)
+
+(defn ^java.util.ArrayDeque ->dq [^long n]
+  (java.util.ArrayDeque. n))
+
+(defn qclone [^java.util.ArrayDeque dq]
+  (vec (.toArray dq)))
+
+
+(defn mut-partition-step
+  ([window n step coll]
+   (let [n-r
+         (loop [idx step
+                ^java.util.ArrayDeque acc (mpop! window step)
+                ^clojure.lang.ISeq coll coll]
+           (if (zero? idx)
+             [(qclone acc) coll]
+             (when-let [v (and coll (.first coll))]
+               (recur (unchecked-dec idx)
+                      (doto  acc (.add v))
+                      (.next coll)))))]
+     (when n-r
+       (let [new-part (n-r 0)
+             remaining  (n-r 1)]
+         (lazy-seq
+          (cons new-part
+                (mut-partition-step window n step remaining)))))))
+  ([n step coll]
+   (let [window (mpush! (->dq n) (take n coll))]
+     (when (= (.size window) n)
+       (lazy-seq
+        (cons (qclone window) (mut-partition-step window n step (drop n coll))))))))
+
+(defn smt-8-8 [times]
+  (->> times
+       (mut-partition-step  8 1)
+       (map    (fn [v] [v (-  (long (qlast v))
+                              (long (qfirst v)))]))
+       (filter (fn [v] (> (long (v 1)) 1000)))))
