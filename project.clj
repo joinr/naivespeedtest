@@ -6,4 +6,5 @@
   :dependencies [[org.clojure/clojure "1.10.3"]
                  [net.cgrand/xforms "0.19.2"]
                  [net.clojars.john/injest "0.1.0-alpha.23"]
-                 [criterium "0.4.6"]])
+                 [criterium "0.4.6"]
+                 [uncomplicate/clojurecl "0.15.1"]])
