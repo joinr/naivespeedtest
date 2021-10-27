@@ -1,6 +1,7 @@
 (ns naivespeedtest.native
   (:require [uncomplicate.clojurecl.core :refer :all]
-            [uncomplicate.clojurecl.info :refer :all])
+            [uncomplicate.clojurecl.info :refer :all]
+            [criterium.core :as c])
   (:require [uncomplicate.commons.core :refer :all]))
 
 ;;platforms - I have intel and nvidia
@@ -11,7 +12,7 @@
 
 (def cuda-platform  (first (platforms)))
 (def intel-platform (second (platforms)))
-#_#_#_
+#_#_#_#_
 (def cuda-gpu  (first (devices cuda-platform)))
 (def intel-gpu (first (devices intel-platform)))
 (def intel-cpu (second (devices intel-platform)))
@@ -62,9 +63,7 @@
              (if (zero? v)
                res
                (conj res [idx (+ idx 8) v]))))))))
-(set! *unchecked-math* false)
 
-(set! *unchecked-math* true)
 (defn smt-8-cached [in dev ctx cqueue smt-prog]
   (let [x          (int-array in) ;;paying for array conversion...
         n          (alength x)
@@ -72,20 +71,15 @@
         work-sizes (work-size [n])]
     (with-release [cl-x     (cl-buffer ctx (* n Integer/BYTES) :read-only)
                    cl-acc   (cl-buffer ctx (* n Integer/BYTES) :read-write)]
-      (let [x          (int-array in) ;;paying for array conversion...
-            n          (alength x)
-            acc        (int-array n)
-            work-sizes (work-size [n])]
-        (set-args! smt-prog cl-acc cl-x )
-        (enq-write!  cqueue cl-x x)
-        (enq-kernel! cqueue smt-prog work-sizes)
-        (enq-read!   cqueue cl-acc acc)
-        (areduce acc idx res []
-                 (let [v (aget acc idx)]
-                   (if (zero? v)
-                     res
-                     (conj res [idx (+ idx 8) v]))))))))
-(set! *unchecked-math* false)
+      (set-args! smt-prog cl-acc cl-x )
+      (enq-write!  cqueue cl-x x)
+      (enq-kernel! cqueue smt-prog work-sizes)
+      (enq-read!   cqueue cl-acc acc)
+      (areduce acc idx res []
+               (let [v (aget acc idx)]
+                 (if (zero? v)
+                   res
+                   (conj res [idx (+ idx 8) v])))))))
 
 ;;avoid creating contexts and programs all over.
 (defn test-cached []
@@ -95,3 +89,57 @@
                  prog     (build-program! (program-with-source ctx [smt-source]) [dev] nil nil nil)
                  smt      (kernel prog "smt")]
     (c/quick-bench (smt-8-cached times-v  dev ctx cqueue smt))))
+
+(set! *unchecked-math* true)
+(defn smt-8-cached2 [^ints x dev ctx cqueue smt-prog]
+  (let [n          (alength x)
+        acc        (int-array n)
+        work-sizes (work-size [n])]
+    (with-release [cl-x     (cl-buffer ctx (* n Integer/BYTES) :read-only)
+                   cl-acc   (cl-buffer ctx (* n Integer/BYTES) :read-write)]
+      (set-args! smt-prog cl-acc cl-x )
+      (enq-write!  cqueue cl-x x)
+      (enq-kernel! cqueue smt-prog work-sizes)
+      (enq-read!   cqueue cl-acc acc)
+      (areduce acc idx res []
+               (let [v (aget acc idx)]
+                 (if (zero? v)
+                   res
+                   (conj res [idx (+ idx 8) v])))))))
+
+;;avoid creating contexts and programs all over.
+(defn test-cached2 []
+  (with-release [dev      (first (devices cuda-platform))
+                 ctx      (context [dev])
+                 cqueue   (command-queue ctx dev)
+                 prog     (build-program! (program-with-source ctx [smt-source]) [dev] nil nil nil)
+                 smt      (kernel prog "smt")
+                 x        (int-array times-v)]
+    (c/quick-bench (smt-8-cached2 x  dev ctx cqueue smt))))
+
+(defn smt-8-cached3 [^ints x ^ints acc dev ctx cqueue smt-prog]
+  (let [n          (alength x)
+        work-sizes (work-size [n])]
+    (with-release [cl-x     (cl-buffer ctx (* n Integer/BYTES) :read-only)
+                   cl-acc   (cl-buffer ctx (* n Integer/BYTES) :read-write)]
+      (set-args! smt-prog cl-acc cl-x )
+      (enq-write!  cqueue cl-x x)
+      (enq-kernel! cqueue smt-prog work-sizes)
+      (enq-read!   cqueue cl-acc acc)
+      (areduce acc idx res []
+               (let [v (aget acc idx)]
+                 (if (zero? v)
+                   res
+                   (conj res [idx (+ idx 8) v])))))))
+
+
+(defn test-cached3 []
+  (with-release [dev      (first (devices cuda-platform))
+                 ctx      (context [dev])
+                 cqueue   (command-queue ctx dev)
+                 prog     (build-program! (program-with-source ctx [smt-source]) [dev] nil nil nil)
+                 smt      (kernel prog "smt")
+                 x        (int-array times-v)
+                 acc      (int-array (alength x))]
+    (c/quick-bench (smt-8-cached3 x acc dev ctx cqueue smt))))
+(set! *unchecked-math* false)
